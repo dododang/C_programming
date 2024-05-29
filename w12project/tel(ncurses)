@@ -1,0 +1,224 @@
+#include <ncurses.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+#define MAX_ENTRIES 100
+
+typedef struct {
+    char name[30];
+    char phone[20];
+    char memo[50];
+} Entry;
+
+Entry phonebook[MAX_ENTRIES];
+int entry_count = 0;
+
+void load_data() {
+    FILE* file = fopen("data.txt", "r");
+    if (!file) {
+        perror("Failed to open data file");
+        exit(1);
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), file) && entry_count < MAX_ENTRIES) {
+        line[strcspn(line, "\n")] = '\0'; // Remove newline character if present
+        char* token = strtok(line, ":");
+        if (token) strcpy(phonebook[entry_count].name, token);
+        token = strtok(NULL, ":");
+        if (token) strcpy(phonebook[entry_count].phone, token);
+        token = strtok(NULL, ":");
+        if (token) strcpy(phonebook[entry_count].memo, token);
+        else phonebook[entry_count].memo[0] = '\0';
+        entry_count++;
+    }
+
+    fclose(file);
+}
+
+void save_data() {
+    FILE* file = fopen("data.txt", "w");
+    if (!file) {
+        perror("Failed to open data file");
+        exit(1);
+    }
+
+    for (int i = 0; i < entry_count; i++) {
+        fprintf(file, "%s:%s:%s\n", phonebook[i].name, phonebook[i].phone, phonebook[i].memo);
+    }
+
+    fclose(file);
+}
+
+void list_entries() {
+    clear();
+    for (int i = 0; i < entry_count; i++) {
+        printw("%s\t%s\t%s\n", phonebook[i].name, phonebook[i].phone, phonebook[i].memo);
+    }
+    refresh();
+    getch(); // Wait for user input to go back to menu
+}
+
+void add_entry() {
+    if (entry_count >= MAX_ENTRIES) {
+        printw("Phonebook is full. Cannot add more entries.\n");
+        getch();
+        return;
+    }
+
+    char name[30], phone[20], memo[50];
+    echo();
+    printw("Enter name: ");
+    getstr(name);
+    printw("Enter phone: ");
+    getstr(phone);
+    printw("Enter memo: ");
+    getstr(memo);
+    noecho();
+
+    strcpy(phonebook[entry_count].name, name);
+    strcpy(phonebook[entry_count].phone, phone);
+    strcpy(phonebook[entry_count].memo, memo);
+    entry_count++;
+}
+
+void delete_entry() {
+    char name[30];
+    echo();
+    printw("Enter name to delete: ");
+    getstr(name);
+    noecho();
+
+    for (int i = 0; i < entry_count; i++) {
+        if (strcmp(phonebook[i].name, name) == 0) {
+            for (int j = i; j < entry_count - 1; j++) {
+                phonebook[j] = phonebook[j + 1];
+            }
+            entry_count--;
+            printw("Entry deleted.\n");
+            getch();
+            return;
+        }
+    }
+    printw("Entry not found.\n");
+    getch();
+}
+
+void search_entry() {
+    char name[30];
+    echo();
+    printw("Enter name to search: ");
+    getstr(name);
+    noecho();
+
+    for (int i = 0; i < entry_count; i++) {
+        if (strcmp(phonebook[i].name, name) == 0) {
+            printw("Name: %s\nPhone: %s\nMemo: %s\n", phonebook[i].name, phonebook[i].phone, phonebook[i].memo);
+            getch();
+            return;
+        }
+    }
+    printw("Entry not found.\n");
+    getch();
+}
+
+void print_menu(WINDOW* menu_win, int highlight) {
+    char* choices[] = {
+        "List",
+        "Add",
+        "Delete",
+        "Search",
+        "Exit"
+    };
+    int choice_count = sizeof(choices) / sizeof(char*);
+
+    for (int i = 0; i < choice_count; i++) {
+        if (highlight == i + 1) {
+            wattron(menu_win, A_REVERSE);
+            mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
+            wattroff(menu_win, A_REVERSE);
+        }
+        else {
+            mvwprintw(menu_win, i + 1, 1, "%s", choices[i]);
+        }
+    }
+    wrefresh(menu_win);
+}
+
+int main() {
+    WINDOW* menu_win;
+    int highlight = 1;
+    int choice = 0;
+    int c;
+
+    initscr();
+    clear();
+    noecho();
+    cbreak();
+    int height = 7;
+    int width = 30;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    menu_win = newwin(height, width, start_y, start_x);
+    keypad(menu_win, TRUE);
+    refresh();
+
+    load_data();
+    print_menu(menu_win, highlight);
+
+    while (1) {
+        c = wgetch(menu_win);
+        switch (c) {
+        case KEY_UP:
+            if (highlight == 1) {
+                highlight = 5;
+            }
+            else {
+                highlight--;
+            }
+            break;
+        case KEY_DOWN:
+            if (highlight == 5) {
+                highlight = 1;
+            }
+            else {
+                highlight++;
+            }
+            break;
+        case 10:
+            choice = highlight;
+            break;
+        default:
+            break;
+        }
+        print_menu(menu_win, highlight);
+        if (choice != 0) {
+            switch (choice) {
+            case 1:
+                list_entries();
+                break;
+            case 2:
+                add_entry();
+                break;
+            case 3:
+                delete_entry();
+                break;
+            case 4:
+                search_entry();
+                break;
+            case 5:
+                endwin();
+                save_data();
+                return 0;
+            }
+            print_menu(menu_win, highlight);
+            choice = 0; // Reset choice after handling it
+        }
+    }
+
+    endwin();
+    save_data();
+    return 0;
+}
